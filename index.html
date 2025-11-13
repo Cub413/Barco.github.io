@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supervivencia 3D con jugador</title>
+<style>
+body { margin: 0; overflow: hidden; background: #000; }
+#joystick { position:absolute; bottom:20px; left:20px; width:100px; height:100px; border-radius:50%; background:rgba(0,0,0,0.3); touch-action:none; }
+#stick { width:50px; height:50px; background:rgba(0,0,0,0.5); border-radius:50%; position:absolute; left:25px; top:25px; }
+#cameraPanel { position:absolute; bottom:20px; right:20px; width:150px; height:150px; background:rgba(0,0,0,0.25); border-radius:10px; touch-action:none; }
+#pauseBtn { position:absolute; top:20px; right:20px; padding:10px 15px; font-size:16px; background:rgba(0,0,0,0.5); color:white; border:none; border-radius:8px; z-index:10; }
+#pausePanel { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; flex-direction:column; z-index:9; }
+#pausePanel button { padding:12px 25px; margin:10px; font-size:18px; border-radius:8px; border:none; cursor:pointer; }
+#settingsPanel { display:none; flex-direction:column; background:rgba(255,255,255,0.9); padding:20px; border-radius:10px; color:black; margin-top:15px; }
+</style>
+</head>
+<body>
+
+<div id="joystick"><div id="stick"></div></div>
+<div id="cameraPanel"></div>
+<button id="pauseBtn">Pausa</button>
+
+<div id="pausePanel">
+  <button id="resumeBtn">Reanudar</button>
+  <button id="settingsBtn">Ajustes</button>
+  <div id="settingsPanel">
+    <label>
+      Distancia de renderizado: 
+      <input type="range" id="renderDist" min="20" max="200" value="100">
+      <span id="renderDistValue">100</span>
+    </label>
+    <label style="margin-top:10px;">
+      <input type="checkbox" id="fogToggle" checked>
+      Activar niebla
+    </label>
+    <label style="margin-top:10px;">
+      <input type="checkbox" id="transparentToggle">
+      Activar texturas transparentes
+    </label>
+    <label style="position:absolute; top:80px; right:20px; color:white; z-index:10;">
+  Calidad (Pixel Ratio):
+  <input type="range" id="pixelRatioSlider" min="0.25" max="2" step="0.05" value="0.75">
+  <span id="pixelRatioValue">0.75</span>
+</label>
+
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from "https://esm.sh/three@0.162.0";
+import { GLTFLoader } from "https://esm.sh/three@0.162.0/examples/jsm/loaders/GLTFLoader.js";
+import { EffectComposer } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { FilmPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/FilmPass.js";
+import { BokehPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/BokehPass.js";
+
+// --- ESCENA ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
+
+// --- RAYCASTER GLOBAL ---
+const raycaster = new THREE.Raycaster();
+
+// --- RENDERER ---
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+// --- CIELO 360 JPG ---
+const textureLoader = new THREE.TextureLoader();
+textureLoader.load("models/cielo.jpg", (texture) => {
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  scene.background = texture;
+  
+});
+
+// --- PLAYER ---
+const player = new THREE.Object3D();
+scene.add(player);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(0,10,0);
+player.add(camera);
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.5, // intensidad
+  0.5, // radio
+  0.2  // umbral
+);
+composer.addPass(bloomPass);
+const filmPass = new FilmPass(0.01, 0.05, 648, false);
+composer.addPass(filmPass);
+const bokeh = new BokehPass(scene, camera, {
+  focus: 10,       // distancia nítida
+  aperture: 0.0003,// intensidad de desenfoque
+  maxblur: 0.005   // máximo desenfoque
+});
+composer.addPass(bokeh);
+
+// --- CUBO DE COLISIÓN ---
+const playerCollider = new THREE.Mesh(
+  new THREE.BoxGeometry(1,2,1),
+  new THREE.MeshBasicMaterial({visible:false})
+);
+player.add(playerCollider);
+
+// --- LUCES ---
+const sun = new THREE.DirectionalLight(0xffd080, 2);
+sun.position.set(50,100,50);
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+// --- TERRAIN BARCO ---
+const loader = new GLTFLoader();
+let terrain = null;
+loader.load("models/Barco.gltf", gltf=>{
+  terrain = gltf.scene;
+  terrain.scale.set(10,10,10); 
+  scene.add(terrain);
+
+  // colocar jugador encima del modelo
+  player.position.set(0,100,0);
+});
+// --- SLIDER PIXEL RATIO ---
+const pixelRatioSlider = document.getElementById('pixelRatioSlider');
+const pixelRatioValue = document.getElementById('pixelRatioValue');
+
+pixelRatioSlider.addEventListener('input', () => {
+  const ratio = parseFloat(pixelRatioSlider.value);
+  pixelRatioValue.textContent = ratio.toFixed(2);
+  renderer.setPixelRatio(window.devicePixelRatio * ratio);
+});
+
+// --- MOVIMIENTO FPS ---
+let yaw=0, pitch=0, joystickInput={x:0,y:0}, speed=10;
+const joystick=document.getElementById('joystick');
+const stick=document.getElementById('stick');
+let joystickId=null, startX=0, startY=0;
+
+joystick.addEventListener('touchstart', e=>{
+  for(const t of e.changedTouches){
+    if(joystickId===null){ joystickId=t.identifier; startX=t.clientX; startY=t.clientY; break; }
+  }
+});
+joystick.addEventListener('touchmove', e=>{
+  if(joystickId===null) return;
+  for(const t of e.changedTouches){
+    if(t.identifier===joystickId){
+      const dx=t.clientX-startX, dy=t.clientY-startY;
+      const maxDist=40;
+      const moveX=Math.max(-maxDist,Math.min(maxDist,dx));
+      const moveY=Math.max(-maxDist,Math.min(maxDist,dy));
+      stick.style.transform=`translate(${moveX}px,${moveY}px)`;
+      joystickInput.x=moveX/maxDist; joystickInput.y=-moveY/maxDist; break;
+    }
+  }
+});
+joystick.addEventListener('touchend', e=>{
+  for(const t of e.changedTouches){
+    if(t.identifier===joystickId){ stick.style.transform='translate(0,0)'; joystickInput.x=0; joystickInput.y=0; joystickId=null; break; }
+  }
+});
+
+// --- TRANSPARENCIA ---
+const transparentToggle = document.getElementById('transparentToggle');
+transparentToggle.addEventListener('change', ()=>{
+  if(!terrain) return;
+  const enable = transparentToggle.checked;
+  terrain.traverse(n=>{
+    if(n.isMesh && n.material.map){
+      n.material.transparent = enable;
+      n.material.needsUpdate = true;
+    }
+  });
+});
+
+// --- PANEL CAMARA ---
+const cameraPanel=document.getElementById('cameraPanel');
+let lookId=null, lookStartX=0, lookStartY=0;
+cameraPanel.addEventListener('touchstart', e=>{
+  for(const t of e.changedTouches){
+    if(lookId===null){ lookId=t.identifier; lookStartX=t.clientX; lookStartY=t.clientY; break; }
+  }
+});
+cameraPanel.addEventListener('touchmove', e=>{
+  if(lookId===null) return;
+  for(const t of e.changedTouches){
+    if(t.identifier===lookId){
+      const dx=t.clientX-lookStartX, dy=t.clientY-lookStartY;
+      const lookSensitivity=0.0025;
+      yaw -= dx*lookSensitivity; pitch -= dy*lookSensitivity;
+      pitch=Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+      lookStartX = t.clientX; lookStartY = t.clientY; break;
+    }
+  }
+});
+cameraPanel.addEventListener('touchend', e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId) lookId=null; } });
+
+// --- PAUSA / AJUSTES ---
+const pauseBtn=document.getElementById('pauseBtn');
+const pausePanel=document.getElementById('pausePanel');
+const resumeBtn=document.getElementById('resumeBtn');
+const settingsBtn=document.getElementById('settingsBtn');
+const settingsPanel=document.getElementById('settingsPanel');
+const renderDistInput=document.getElementById('renderDist');
+const renderDistValue=document.getElementById('renderDistValue');
+const fogToggle=document.getElementById('fogToggle');
+let paused=false;
+
+pauseBtn.addEventListener('click', ()=>{ paused=true; pausePanel.style.display='flex'; });
+resumeBtn.addEventListener('click', ()=>{ paused=false; pausePanel.style.display='none'; settingsPanel.style.display='none'; });
+settingsBtn.addEventListener('click', ()=>{ settingsPanel.style.display=(settingsPanel.style.display==='flex')?'none':'flex'; });
+renderDistInput.addEventListener('input', ()=>{
+  const val=parseFloat(renderDistInput.value);
+  camera.far=val; camera.updateProjectionMatrix();
+  scene.fog.far=val; scene.fog.near=val/5;
+  renderDistValue.textContent=val;
+});
+fogToggle.addEventListener('change', ()=>{ scene.fog = fogToggle.checked ? new THREE.Fog(0x87ceeb, camera.far/5, camera.far) : null; });
+
+// --- RAYCASTING Y FÍSICAS ---
+const down = new THREE.Vector3(0,-1,0);
+let velocityY = 0;
+function updatePhysics(delta){
+  if(!terrain) return;
+  // raycasting desde el cubo de colisión
+  raycaster.set(playerCollider.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,5,0)), down);
+  const intersects = raycaster.intersectObject(terrain,true);
+  if(intersects.length>0){
+    const groundY = intersects[0].point.y + 1; // altura sobre el modelo
+    if(player.position.y > groundY){
+      velocityY -= 9.8 * delta; // gravedad
+      player.position.y += velocityY * delta;
+      if(player.position.y < groundY){
+        player.position.y = groundY;
+        velocityY = 0;
+      }
+    } else {
+      velocityY = 0;
+      player.position.y = groundY;
+    }
+  }
+}
+// --- Detectar colisiones horizontales ---
+function checkWalls(deltaX, deltaZ) {
+  if (!terrain) return { dx: deltaX, dz: deltaZ };
+
+  const directions = [
+    new THREE.Vector3(deltaX, 0, 0),
+    new THREE.Vector3(0, 0, deltaZ)
+  ];
+  let dx = deltaX, dz = deltaZ;
+
+  directions.forEach((dir) => {
+    const origin = playerCollider.getWorldPosition(new THREE.Vector3());
+    origin.y += 1; // 🔹 eleva el rayo al centro del jugador (ajusta según tu altura)
+    raycaster.set(origin, dir.clone().normalize());
+    const intersects = raycaster.intersectObject(terrain, true);
+    if (intersects.length > 0 && intersects[0].distance < 0.8) { // menor distancia = más preciso
+      if (dir.x !== 0) dx = 0;
+      if (dir.z !== 0) dz = 0;
+    }
+  });
+
+  return { dx, dz };
+}
+
+const maxStepHeight = 1.0; // altura máxima que puede subir
+
+function updatePlayerHeight(){
+  if(terrain){
+    raycaster.set(player.position.clone().add(new THREE.Vector3(0,10,0)), down);
+    const intersects = raycaster.intersectObject(terrain, true);
+    if(intersects.length>0){
+      const targetY = intersects[0].point.y + playerHeightOffset;
+      // permitir subir solo si diferencia < maxStepHeight
+      if(targetY - player.position.y <= maxStepHeight){
+        player.position.y = targetY;
+      }
+    }
+  }
+}
+// --- AGUA ANIMADA CON TEXTURA ---
+
+const waterGeo = new THREE.PlaneGeometry(500, 500, 100, 100);
+const waterMat = new THREE.MeshPhongMaterial({
+  color: 0x1e90ff,
+  side: THREE.DoubleSide,
+  transparent: true,
+  opacity: 0.8
+});
+const water = new THREE.Mesh(waterGeo, waterMat);
+water.rotation.x = -Math.PI/2;
+water.position.y = 0;
+scene.add(water);
+
+// cargar textura
+textureLoader.load('models/agua.jpg', (texture)=>{
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(10,10);
+  water.material.map = texture;
+  water.material.needsUpdate = true;
+});
+
+
+// --- ANIMACIÓN ---
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  if(!paused){
+    // movimiento
+    const forward=-joystickInput.y*speed*delta;
+    const right=joystickInput.x*speed*delta;
+    let {dx,dz} = checkWalls(Math.sin(yaw)*forward + Math.cos(yaw)*right, Math.cos(yaw)*forward - Math.sin(yaw)*right);
+player.position.x += dx;
+player.position.z += dz;
+
+    player.rotation.y = yaw;
+    camera.rotation.x = pitch;
+
+    // físicas con raycasting
+    updatePhysics(delta);
+  }
+// --- ANIMACIÓN DE OLAS ---
+function animateWaves(){
+  const pos = water.geometry.attributes.position;
+  for(let i=0; i<pos.count; i++){
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    pos.setZ(i, Math.sin(x*0.1 + performance.now()*0.002) + Math.cos(y*0.1 + performance.now()*0.002));
+  }
+  pos.needsUpdate = true;
+  if(water.material.map) {
+    water.material.map.offset.x += 0.001;
+    water.material.map.offset.y += 0.001;
+  }
+}
+
+// dentro de animate()
+animateWaves();
+// --- MOVIMIENTO REALISTA DEL BARCO ---
+if (terrain) {
+  const t = performance.now() * 0.001;
+  terrain.rotation.z = Math.sin(t * 0.3) * 0.02; // balanceo lateral
+  terrain.rotation.x = Math.sin(t * 0.4) * 0.015; // cabeceo
+  terrain.position.y = Math.sin(t * 0.5) * 0.5;   // leve subida y bajada
+}
+
+
+composer.render();
+
+}
+addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+animate();
+</script>
+</body>
+</html>
