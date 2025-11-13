@@ -10,9 +10,104 @@ body { margin: 0; overflow: hidden; background: #000; }
 #stick { width:50px; height:50px; background:rgba(0,0,0,0.5); border-radius:50%; position:absolute; left:25px; top:25px; }
 #cameraPanel { position:absolute; bottom:20px; right:20px; width:150px; height:150px; background:rgba(0,0,0,0.25); border-radius:10px; touch-action:none; }
 #pauseBtn { position:absolute; top:20px; right:20px; padding:10px 15px; font-size:16px; background:rgba(0,0,0,0.5); color:white; border:none; border-radius:8px; z-index:10; }
-#pausePanel { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; justify-content:center; align-items:center; flex-direction:column; z-index:9; }
-#pausePanel button { padding:12px 25px; margin:10px; font-size:18px; border-radius:8px; border:none; cursor:pointer; }
-#settingsPanel { display:none; flex-direction:column; background:rgba(255,255,255,0.9); padding:20px; border-radius:10px; color:black; margin-top:15px; }
+
+#pausePanel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9;
+  background: rgba(0, 0, 0, 0.7);
+  font-family: sans-serif;
+}
+
+#pauseContent {
+  background: linear-gradient(to bottom, #8B5E3C, #A97457); /* madera clara */
+  border: 5px solid #5C3A21; /* borde madera oscura */
+  border-radius: 12px;
+  padding: 15px;
+  max-width: 90%;
+  max-height: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  color: #fff;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+#pauseContent button {
+  background: linear-gradient(to bottom, #C27C4F, #A15B32);
+  border: 2px solid #5C3A21;
+  border-radius: 8px;
+  color: white;
+  font-size: 18px;
+  padding: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+#pauseContent button:hover {
+  background: linear-gradient(to bottom, #D08F5C, #B26940);
+}
+
+#settingsPanel {
+  flex: 1;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+#settingsScroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* scroll suave en móviles */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 5px;
+  max-height: 100%;
+}
+
+#settingsScroll label, #settingsScroll fieldset {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  color: #fff;
+}
+
+#settingsScroll input[type="range"] {
+  margin-top: 5px;
+}
+
+#settingsScroll fieldset {
+  border: 2px solid #5C3A21;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+#settingsScroll legend {
+  padding: 0 5px;
+  color: #fff;
+  font-weight: bold;
+}
+
+#postProcessLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: bold;
+}
+
+
+
+
+
+
+</style>
+
 </style>
 </head>
 <body>
@@ -22,30 +117,63 @@ body { margin: 0; overflow: hidden; background: #000; }
 <button id="pauseBtn">Pausa</button>
 
 <div id="pausePanel">
-  <button id="resumeBtn">Reanudar</button>
-  <button id="settingsBtn">Ajustes</button>
-  <div id="settingsPanel">
-    <label>
-      Distancia de renderizado: 
-      <input type="range" id="renderDist" min="20" max="200" value="100">
-      <span id="renderDistValue">100</span>
-    </label>
-    <label style="margin-top:10px;">
-      <input type="checkbox" id="fogToggle" checked>
-      Activar niebla
-    </label>
-    <label style="margin-top:10px;">
-      <input type="checkbox" id="transparentToggle">
-      Activar texturas transparentes
-    </label>
-    <label style="position:absolute; top:80px; right:20px; color:white; z-index:10;">
-  Calidad (Pixel Ratio):
-  <input type="range" id="pixelRatioSlider" min="0.25" max="2" step="0.05" value="0.75">
-  <span id="pixelRatioValue">0.75</span>
+  <div id="pauseContent">
+    <button id="resumeBtn">Reanudar</button>
+    <button id="settingsBtn">Ajustes</button>
+
+    <div id="settingsPanel">
+      <div id="settingsScroll">
+        <label>
+  Sensibilidad de cámara:
+  <input type="range" id="cameraSensitivity" min="0.0005" max="0.01" step="0.0001" value="0.0025">
+  <span id="cameraSensitivityValue">0.0025</span>
 </label>
 
+        <label>
+          Distancia de renderizado:
+          <input type="range" id="renderDist" min="20" max="500" value="100">
+          <span id="renderDistValue">100</span>
+        </label>
+
+        <label>
+          <input type="checkbox" id="fogToggle" checked>
+          Activar niebla
+        </label>
+
+        <label>
+          <input type="checkbox" id="transparentToggle">
+          Activar texturas transparentes
+        </label>
+
+        <label>
+          Calidad (Pixel Ratio):
+          <input type="range" id="pixelRatioSlider" min="0.25" max="2" step="0.05" value="0.75">
+          <span id="pixelRatioValue">0.75</span>
+        </label>
+
+        <fieldset id="filmControls">
+          <legend>FilmPass (Película)</legend>
+          <label>Intensidad del ruido: <input type="range" id="filmNoise" min="0" max="0.5" step="0.005" value="0"><span id="filmNoiseVal">0</span></label>
+          <label>Intensidad de líneas de escaneo: <input type="range" id="filmScanline" min="0" max="0.5" step="0.005" value="0"><span id="filmScanlineVal">0</span></label>
+          <label>Escala de grises: <input type="checkbox" id="filmGray" checked></label>
+        </fieldset>
+
+        <fieldset id="bokehControls">
+          <legend>BokehPass (Profundidad de campo)</legend>
+          <label>Enfoque (Focus): <input type="range" id="bokehFocus" min="1" max="50" step="0.5" value="50"><span id="bokehFocusVal">50</span></label>
+          <label>Apertura: <input type="range" id="bokehAperture" min="0.00001" max="0.001" step="0.00001" value="0.00021"><span id="bokehApertureVal">0.00021</span></label>
+          <label>Desenfoque máximo: <input type="range" id="bokehMaxBlur" min="0.001" max="0.02" step="0.001" value="0.02"><span id="bokehMaxBlurVal">0.02</span></label>
+        </fieldset>
+
+        <label id="postProcessLabel">
+          <input type="checkbox" id="postProcessToggle" checked>
+          Activar postprocesado
+        </label>
+      </div>
+    </div>
   </div>
 </div>
+
 
 <script type="module">
 import * as THREE from "https://esm.sh/three@0.162.0";
@@ -96,8 +224,8 @@ const filmPass = new FilmPass(0.01, 0.05, 648, false);
 composer.addPass(filmPass);
 const bokeh = new BokehPass(scene, camera, {
   focus: 10,       // distancia nítida
-  aperture: 0.0003,// intensidad de desenfoque
-  maxblur: 0.005   // máximo desenfoque
+  aperture: 0.00021,// intensidad de desenfoque
+  maxblur: 0.02   // máximo desenfoque
 });
 composer.addPass(bokeh);
 
@@ -123,7 +251,7 @@ loader.load("models/Barco.gltf", gltf=>{
   scene.add(terrain);
 
   // colocar jugador encima del modelo
-  player.position.set(0,100,0);
+  player.position.set(50,100,0);
 });
 // --- SLIDER PIXEL RATIO ---
 const pixelRatioSlider = document.getElementById('pixelRatioSlider');
@@ -133,6 +261,63 @@ pixelRatioSlider.addEventListener('input', () => {
   const ratio = parseFloat(pixelRatioSlider.value);
   pixelRatioValue.textContent = ratio.toFixed(2);
   renderer.setPixelRatio(window.devicePixelRatio * ratio);
+});
+const filmNoiseSlider = document.getElementById('filmNoise');
+const filmNoiseVal = document.getElementById('filmNoiseVal');
+filmNoiseSlider.addEventListener('input', ()=>{
+  filmPass.uniforms['nIntensity'].value = parseFloat(filmNoiseSlider.value);
+  filmNoiseVal.textContent = parseFloat(filmNoiseSlider.value).toFixed(3);
+});
+
+const filmScanlineSlider = document.getElementById('filmScanline');
+const filmScanlineVal = document.getElementById('filmScanlineVal');
+filmScanlineSlider.addEventListener('input', ()=>{
+  filmPass.uniforms['sIntensity'].value = parseFloat(filmScanlineSlider.value);
+  filmScanlineVal.textContent = parseFloat(filmScanlineSlider.value).toFixed(3);
+});
+
+const filmGrayCheckbox = document.getElementById('filmGray');
+filmGrayCheckbox.addEventListener('change', ()=>{
+  filmPass.uniforms['grayscale'].value = filmGrayCheckbox.checked ? 1 : 0;
+});
+const bokehFocusSlider = document.getElementById('bokehFocus');
+const bokehFocusVal = document.getElementById('bokehFocusVal');
+bokehFocusSlider.addEventListener('input', ()=>{
+  bokeh.materialBokeh.uniforms['focus'].value = parseFloat(bokehFocusSlider.value);
+  bokehFocusVal.textContent = parseFloat(bokehFocusSlider.value).toFixed(1);
+});
+
+const bokehApertureSlider = document.getElementById('bokehAperture');
+const bokehApertureVal = document.getElementById('bokehApertureVal');
+bokehApertureSlider.addEventListener('input', ()=>{
+  bokeh.materialBokeh.uniforms['aperture'].value = parseFloat(bokehApertureSlider.value);
+  bokehApertureVal.textContent = parseFloat(bokehApertureSlider.value).toFixed(5);
+});
+
+const bokehMaxBlurSlider = document.getElementById('bokehMaxBlur');
+const bokehMaxBlurVal = document.getElementById('bokehMaxBlurVal');
+bokehMaxBlurSlider.addEventListener('input', ()=>{
+  bokeh.materialBokeh.uniforms['maxblur'].value = parseFloat(bokehMaxBlurSlider.value);
+  bokehMaxBlurVal.textContent = parseFloat(bokehMaxBlurSlider.value).toFixed(3);
+});
+const postProcessToggle = document.getElementById('postProcessToggle');
+
+postProcessToggle.addEventListener('change', () => {
+  const enabled = postProcessToggle.checked;
+  // Solo deshabilitamos los pases, no el composer
+  composer.passes.forEach(pass => {
+    if (pass !== composer.passes[0]) { // opcional: si el primer pase es renderPass base, lo dejamos activo
+      pass.enabled = enabled;
+    }
+  });
+});
+const cameraSensitivitySlider = document.getElementById('cameraSensitivity');
+const cameraSensitivityValue = document.getElementById('cameraSensitivityValue');
+let lookSensitivity = 0.0025; // valor por defecto
+
+cameraSensitivitySlider.addEventListener('input', ()=>{
+  lookSensitivity = parseFloat(cameraSensitivitySlider.value);
+  cameraSensitivityValue.textContent = lookSensitivity.toFixed(4);
 });
 
 // --- MOVIMIENTO FPS ---
@@ -191,13 +376,16 @@ cameraPanel.addEventListener('touchmove', e=>{
   for(const t of e.changedTouches){
     if(t.identifier===lookId){
       const dx=t.clientX-lookStartX, dy=t.clientY-lookStartY;
-      const lookSensitivity=0.0025;
-      yaw -= dx*lookSensitivity; pitch -= dy*lookSensitivity;
-      pitch=Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
-      lookStartX = t.clientX; lookStartY = t.clientY; break;
+      yaw -= dx * lookSensitivity;
+      pitch -= dy * lookSensitivity;
+      pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+      lookStartX = t.clientX;
+      lookStartY = t.clientY;
+      break;
     }
   }
 });
+
 cameraPanel.addEventListener('touchend', e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId) lookId=null; } });
 
 // --- PAUSA / AJUSTES ---
@@ -307,6 +495,69 @@ textureLoader.load('models/agua.jpg', (texture)=>{
   water.material.needsUpdate = true;
 });
 
+// --- Parámetros del agua ---
+const waterLevel = 0;        // altura de la superficie del agua
+let inWater = false;         // si el jugador está en el agua
+let swimSpeed = 5;           // velocidad horizontal en el agua
+let buoyancy = 15;           // fuerza de flotación
+let swimUpVelocity = 0;      // velocidad vertical en el agua
+
+function updateWaterMovement(delta) {
+  if (!terrain) return;
+  const playerPos = player.position.clone();
+
+  // Raycast hacia abajo para detectar suelo
+  const origin = playerCollider.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,1,0));
+  raycaster.set(origin, new THREE.Vector3(0,-1,0));
+  const intersects = raycaster.intersectObject(terrain, true);
+
+  // Determinar si el jugador debe caer o entrar al agua
+  if (intersects.length > 0) {
+    const groundY = intersects[0].point.y + 1;
+    if (playerPos.y > groundY) {
+      if (!inWater) velocityY -= 9.8 * delta; // gravedad normal
+      player.position.y += velocityY * delta;
+      if (player.position.y < groundY) {
+        player.position.y = groundY;
+        velocityY = 0;
+      }
+    }
+  } else {
+    // sin suelo, caer hasta llegar al agua
+    if (playerPos.y > waterLevel) {
+      velocityY -= 9.8 * delta;
+      player.position.y += velocityY * delta;
+      if (player.position.y <= waterLevel) {
+        player.position.y = waterLevel;
+        inWater = true;
+        swimUpVelocity = 0;
+        velocityY = 0;
+      }
+    } else {
+      inWater = true; // jugador ya en agua
+    }
+  }
+
+  // --- Física de agua ---
+  if (inWater) {
+    const depth = waterLevel - player.position.y;
+    swimUpVelocity += buoyancy * delta * Math.min(depth, 1);
+    if (swimUpVelocity > 10) swimUpVelocity = 10;
+    player.position.y += swimUpVelocity * delta;
+
+    // movimiento en la dirección de la cámara
+    const moveX = -Math.sin(yaw) * joystickInput.y + Math.cos(yaw) * joystickInput.x;
+    const moveZ = -Math.cos(yaw) * joystickInput.y - Math.sin(yaw) * joystickInput.x;
+    player.position.x += moveX * swimSpeed * delta;
+    player.position.z += moveZ * swimSpeed * delta;
+
+    // salir del agua si toca superficie
+    if (player.position.y >= waterLevel) {
+      inWater = false;
+      swimUpVelocity = 0;
+    }
+  }
+}
 
 // --- ANIMACIÓN ---
 const clock=new THREE.Clock();
@@ -340,6 +591,25 @@ function animateWaves(){
     water.material.map.offset.x += 0.001;
     water.material.map.offset.y += 0.001;
   }
+}
+if (!paused) {
+  // movimiento horizontal normal
+  const forward = -joystickInput.y * speed * delta;
+  const right = joystickInput.x * speed * delta;
+  let {dx,dz} = checkWalls(
+    Math.sin(yaw)*forward + Math.cos(yaw)*right,
+    Math.cos(yaw)*forward - Math.sin(yaw)*right
+  );
+  player.position.x += dx;
+  player.position.z += dz;
+  player.rotation.y = yaw;
+  camera.rotation.x = pitch;
+
+  // físicas normales
+  updatePhysics(delta);
+
+  // física de agua independiente
+  updateWaterMovement(delta);
 }
 
 // dentro de animate()
