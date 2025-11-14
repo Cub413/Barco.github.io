@@ -100,6 +100,13 @@ body { margin: 0; overflow: hidden; background: #000; }
   gap: 5px;
   font-weight: bold;
 }
+btnPick {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  z-index: 10;
+}
 
 
 
@@ -147,7 +154,7 @@ body { margin: 0; overflow: hidden; background: #000; }
 
         <label>
           Calidad (Pixel Ratio):
-          <input type="range" id="pixelRatioSlider" min="0.25" max="2" step="0.05" value="0.75">
+          <input type="range" id="pixelRatioSlider" min="0" max="2" step="0.05" value="0.75">
           <span id="pixelRatioValue">0.75</span>
         </label>
 
@@ -160,15 +167,16 @@ body { margin: 0; overflow: hidden; background: #000; }
 
         <fieldset id="bokehControls">
           <legend>BokehPass (Profundidad de campo)</legend>
-          <label>Enfoque (Focus): <input type="range" id="bokehFocus" min="1" max="50" step="0.5" value="50"><span id="bokehFocusVal">50</span></label>
-          <label>Apertura: <input type="range" id="bokehAperture" min="0.00001" max="0.001" step="0.00001" value="0.00021"><span id="bokehApertureVal">0.00021</span></label>
-          <label>Desenfoque máximo: <input type="range" id="bokehMaxBlur" min="0.001" max="0.02" step="0.001" value="0.02"><span id="bokehMaxBlurVal">0.02</span></label>
+          <label>Enfoque (Focus): <input type="range" id="bokehFocus" min="0" max="50" step="0.5" value="50"><span id="bokehFocusVal">50</span></label>
+          <label>Apertura: <input type="range" id="bokehAperture" min="0.0000" max="0.001" step="0.00001" value="0.00021"><span id="bokehApertureVal">0.00021</span></label>
+          <label>Desenfoque máximo: <input type="range" id="bokehMaxBlur" min="0.00" max="0.02" step="0.001" value="0.02"><span id="bokehMaxBlurVal">0.02</span></label>
         </fieldset>
 
-        <label id="postProcessLabel">
-          <input type="checkbox" id="postProcessToggle" checked>
-          Activar postprocesado
-        </label>
+     <label id="postProcessLabel">
+  <input type="checkbox" id="postProcessToggle">
+  Activar postprocesado
+</label>
+
       </div>
     </div>
   </div>
@@ -247,11 +255,11 @@ const loader = new GLTFLoader();
 let terrain = null;
 loader.load("models/Barco.gltf", gltf=>{
   terrain = gltf.scene;
-  terrain.scale.set(10,10,10); 
+  terrain.scale.set(1,1,1); 
   scene.add(terrain);
 
   // colocar jugador encima del modelo
-  player.position.set(50,100,0);
+  player.position.set(0,100,0);
 });
 // --- SLIDER PIXEL RATIO ---
 const pixelRatioSlider = document.getElementById('pixelRatioSlider');
@@ -302,15 +310,24 @@ bokehMaxBlurSlider.addEventListener('input', ()=>{
 });
 const postProcessToggle = document.getElementById('postProcessToggle');
 
+// Asegurarse de que inicie desactivado
+postProcessToggle.checked = false;
+composer.passes.forEach(pass => {
+  if (pass !== composer.passes[0]) { // dejar solo el RenderPass activo
+    pass.enabled = false;
+  }
+});
+
+// Listener ya existente
 postProcessToggle.addEventListener('change', () => {
   const enabled = postProcessToggle.checked;
-  // Solo deshabilitamos los pases, no el composer
   composer.passes.forEach(pass => {
-    if (pass !== composer.passes[0]) { // opcional: si el primer pase es renderPass base, lo dejamos activo
+    if (pass !== composer.passes[0]) {
       pass.enabled = enabled;
     }
   });
 });
+
 const cameraSensitivitySlider = document.getElementById('cameraSensitivity');
 const cameraSensitivityValue = document.getElementById('cameraSensitivityValue');
 let lookSensitivity = 0.0025; // valor por defecto
@@ -483,7 +500,7 @@ const waterMat = new THREE.MeshPhongMaterial({
 });
 const water = new THREE.Mesh(waterGeo, waterMat);
 water.rotation.x = -Math.PI/2;
-water.position.y = 0;
+water.position.y = -7;
 scene.add(water);
 
 // cargar textura
@@ -501,6 +518,65 @@ let inWater = false;         // si el jugador está en el agua
 let swimSpeed = 5;           // velocidad horizontal en el agua
 let buoyancy = 15;           // fuerza de flotación
 let swimUpVelocity = 0;      // velocidad vertical en el agua
+let fallingUnderwater = false;
+let cinematicProgress = 0;
+let gameOver = false;
+const waterBottom = waterLevel - 50; // profundidad del fondo
+
+
+
+
+let fadeOverlay;
+
+function startWaterCinematic() {
+  if (fallingUnderwater) return;
+  fallingUnderwater = true;
+
+  fadeOverlay = document.createElement("div");
+  fadeOverlay.style.position = "fixed";
+  fadeOverlay.style.top = 0;
+  fadeOverlay.style.left = 0;
+  fadeOverlay.style.width = "100%";
+  fadeOverlay.style.height = "100%";
+  fadeOverlay.style.background = "rgba(0,0,0,0)";
+  fadeOverlay.style.transition = "background 3s linear";
+  fadeOverlay.style.pointerEvents = "none";
+  document.body.appendChild(fadeOverlay);
+
+  let cinematicStart = performance.now();
+  let descentSpeed = 0.2; // velocidad de descenso
+  let cameraTilt = 0; // ángulo actual hacia arriba
+
+  function cinematicLoop() {
+    const elapsed = (performance.now() - cinematicStart) / 1000;
+
+    // rotar cámara hacia arriba progresivamente
+    cameraTilt = Math.min(Math.PI / 2.5, cameraTilt + 0.005);
+    camera.rotation.x = -cameraTilt;
+
+    // movimiento descendente
+    player.position.y -= descentSpeed;
+
+    // seguir al jugador
+    camera.position.y = player.position.y + 2;
+
+    // vibración leve tipo agua
+    camera.position.x += Math.sin(elapsed * 4) * 0.01;
+
+    // oscurecer pantalla tras unos segundos
+    if (elapsed > 4) fadeOverlay.style.background = "rgba(0,0,0,1)";
+
+    // reiniciar tras 7s
+    if (elapsed > 7) {
+      location.reload();
+      return;
+    }
+
+    requestAnimationFrame(cinematicLoop);
+  }
+
+  cinematicLoop();
+}
 
 function updateWaterMovement(delta) {
   if (!terrain) return;
@@ -558,6 +634,165 @@ function updateWaterMovement(delta) {
     }
   }
 }
+const mira = document.createElement('div');
+mira.style.position = 'absolute';
+mira.style.left = '50%';
+mira.style.top = '50%';
+mira.style.width = '6px';
+mira.style.height = '6px';
+mira.style.borderRadius = '50%';
+mira.style.transform = 'translate(-50%, -50%)';
+mira.style.background = '#fff';
+mira.style.pointerEvents = 'none';
+document.body.appendChild(mira);
+
+// Botón táctil
+const btnPick = document.createElement('button');
+btnPick.innerText = 'Agarrar';
+btnPick.style.position = 'fixed'; // <- aquí
+btnPick.style.bottom = '20px';
+btnPick.style.right = '20px';
+btnPick.style.padding = '10px 20px';
+btnPick.style.display = 'none';
+document.body.appendChild(btnPick);
+btnPick.onclick = () => {
+  if (!objetoAgarrado) return;
+
+  if (objetoAgarrado.parent === camera) {
+    // Soltar el objeto apuntando con la mira
+    const w = objetoAgarrado.userData.cfg?.world;
+    if (w) {
+      objetoAgarrado.scale.set(w.scale, w.scale, w.scale);
+      scene.add(objetoAgarrado);
+
+      // Raycast desde la cámara hacia adelante (dirección de la mira)
+      raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+      const inter = raycaster.intersectObjects(scene.children, true);
+      if(inter.length > 0){
+        objetoAgarrado.position.copy(inter[0].point);
+        objetoAgarrado.position.y += 0.05; // pequeño offset
+      } else {
+        // si no hay colisión, colocarlo a 3 unidades adelante de la cámara
+        const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+        objetoAgarrado.position.copy(camera.position).add(forward.multiplyScalar(3));
+      }
+    }
+    objetoAgarrado = null;
+    btnPick.style.display = 'none';
+  } else {
+    // Agarrar el objeto
+    colocarEnMano(objetoAgarrado);
+  }
+};
+
+// Modelos con rutas y posiciones
+const modelos = [
+  {
+    name: 'cana',
+    url: 'models/Caña_de_pesca.gltf',
+    cfg: {
+      world: { pos: { x: 0, y: 5, z: 0 }, rot: { x: 0, y: 0, z: 0 }, scale: 5 },
+      hand: { pos: { x: 0.3, y: -0.5, z: -1 }, rot: { x: 0, y: Math.PI/2, z:0 }, scale: 1.2 }
+    }
+  },
+  {
+    name: 'manzana',
+    url: 'models/manana.gltf',
+    cfg: {
+      world: { pos: { x: 2, y: 5, z: 1 }, rot: { x: 0, y: Math.PI/4, z: 0 }, scale: 2 },
+      hand: { pos: { x: 0.25, y: -0.4, z: -0.9 }, rot: { x:0, y:Math.PI/3, z:0 }, scale: 0.5 }
+    }
+  },
+  {
+    name: 'barril',
+    url: 'models/barril.gltf',
+    cfg: {
+      world: { pos: { x: -2, y: 5, z: -1 }, rot: { x:0, y:0, z:0 }, scale: 3 },
+      hand: { pos: { x: 1, y: -1, z: -1 }, rot: { x:0, y:1, z:0 }, scale: 0.5 }
+    }
+  }
+];
+
+let objetosEnEscena = [];
+let objetoAgarrado = null;
+
+// Cargar todos los modelos
+modelos.forEach(m=>{
+  loader.load(m.url, gltf=>{
+    const obj = gltf.scene;
+    obj.userData.cfg = m.cfg || {};
+    scene.add(obj);
+
+    // colocar en el mundo
+    if(obj.userData.cfg.world){
+      const w = obj.userData.cfg.world;
+      obj.position.set(w.pos.x, w.pos.y, w.pos.z);
+      obj.rotation.set(w.rot.x, w.rot.y, w.rot.z);
+      obj.scale.set(w.scale, w.scale, w.scale);
+    }
+
+    objetosEnEscena.push(obj);
+  });
+});
+
+// Función para colocar objeto en la mano
+function colocarEnMano(obj){
+  if(!obj.userData.cfg || !obj.userData.cfg.hand) return;
+
+  const h = obj.userData.cfg.hand;
+  camera.add(obj);
+  obj.position.set(h.pos.x, h.pos.y, h.pos.z);
+  obj.rotation.set(h.rot.x, h.rot.y, h.rot.z);
+  obj.scale.set(h.scale, h.scale, h.scale);
+}
+
+// Soltar con colisión
+function soltar(obj){
+  if(!obj.userData.cfg || !obj.userData.cfg.world) return;
+
+  const w = obj.userData.cfg.world;
+  obj.scale.set(w.scale, w.scale, w.scale);
+
+  scene.add(obj);
+  obj.position.copy(camera.position);
+
+  // raycast hacia abajo
+  raycaster.set(obj.position, new THREE.Vector3(0,-1,0));
+  const inter = raycaster.intersectObjects(scene.children, true);
+  if(inter.length>0){
+    obj.position.y = inter[0].point.y + 0.05;
+  }
+}
+
+function revisarObjetoCercano() {
+  if (objetoAgarrado && objetoAgarrado.parent === camera) {
+    btnPick.innerText = 'Soltar';
+    btnPick.style.display = 'block';
+    return;
+  }
+
+  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+  const inter = raycaster.intersectObjects(objetosEnEscena, true);
+  if (inter.length > 0) {
+    // Buscar el objeto padre que tenga userData.cfg
+    let obj = inter[0].object;
+    while (!obj.userData.cfg && obj.parent) obj = obj.parent;
+
+    if (!obj.userData.cfg) {
+      btnPick.style.display = 'none';
+      objetoAgarrado = null;
+      return;
+    }
+
+    objetoAgarrado = obj;
+    btnPick.innerText = 'Agarrar';
+    btnPick.style.display = 'block';
+  } else {
+    btnPick.style.display = 'none';
+    objetoAgarrado = null;
+  }
+}
+
 
 // --- ANIMACIÓN ---
 const clock=new THREE.Clock();
@@ -605,8 +840,14 @@ if (!paused) {
   player.rotation.y = yaw;
   camera.rotation.x = pitch;
 
-  // físicas normales
-  updatePhysics(delta);
+// físicas con raycasting
+updatePhysics(delta);
+
+if (terrain && player.position.y <= waterLevel && !fallingUnderwater) {
+  startWaterCinematic();
+}
+
+
 
   // física de agua independiente
   updateWaterMovement(delta);
@@ -622,6 +863,9 @@ if (terrain) {
   terrain.position.y = Math.sin(t * 0.5) * 0.5;   // leve subida y bajada
 }
 
+
+
+  revisarObjetoCercano();
 
 composer.render();
 
