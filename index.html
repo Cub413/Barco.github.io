@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Supervivencia 3D con jugador</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
 <style>
 body { margin: 0; overflow: hidden; background: #000; }
 #joystick { position:absolute; bottom:20px; left:20px; width:100px; height:100px; border-radius:50%; background:rgba(0,0,0,0.3); touch-action:none; }
@@ -113,14 +115,131 @@ btnPick {
 
 
 
-</style>
+#panelHorizontal {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 180, 255, 0.7);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  font-size: 2rem;
+  color: white;
+  cursor: pointer;
+  text-align: center;
+  z-index: 100001; /* mayor que el botón */
+}
 
 </style>
 </head>
 <body>
 
+
+
+<div id="inicioFondo" style="
+  position:fixed;
+  top:0; left:0; width:100%; height:100%;
+  background:url('models/barco3.jpg') no-repeat center/cover;
+  background-size:cover;
+  z-index:99999;
+"></div>
+
+<div id="panelHorizontal">Toca para continuar</div>
+
+<button id="btnJugar" style="
+  position:absolute; top:90%; left:90%;
+  transform:translate(-50%,-50%);
+  background: gray;
+  border-radius: 5px;
+  border: 2px solid black;
+  z-index:100000;
+  padding:20px 40px; font-size:24px;
+  color:black; cursor:pointer;
+">
+  Jugar
+</button>
+
+
+<!-- Panel de carga -->
+<div id="loadingPanel" style="
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background:#111; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; z-index:9998;
+  color:white; display:none;
+">
+<div id="loadingContainer" style="
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  text-align:center;
+  z-index:100000;
+">
+  <div id="loadingText" style="
+    font-size:36px;
+    color:white;
+    -webkit-text-stroke: 2px black; /* borde negro más grueso */
+    margin-bottom:20px;
+  ">
+    Cargando...
+  </div>
+  <svg width="180" height="180" style="display:block; margin:0 auto;">
+    <circle cx="90" cy="90" r="80" stroke="black" stroke-width="14" fill="none"/> <!-- borde negro más grueso -->
+    <circle id="progressCircle" cx="90" cy="90" r="80" stroke="#1e90ff" stroke-width="12" fill="none"
+      stroke-dasharray="502.65" stroke-dashoffset="502.65" transform="rotate(-90 90 90)"/>
+  </svg>
+</div>
+
+<div id="progressText" style="
+  position:absolute; top:60%; left:50%;
+  transform:translate(-50%,-50%);
+  font-size:24px;
+  color:white; /* color del texto */
+  -webkit-text-stroke: 1px black; /* borde negro del texto */
+  z-index:100000;
+">
+  0%
+</div>
+
+  <div id="bgContainer" style="
+    position:absolute; top:0; left:0; width:100%; height:100%; overflow:hidden; z-index:-1;
+  "></div>
+</div>
+
+<!-- Botones invisibles -->
+<button id="btnCargar" style="display:none;"></button>
+<button id="btnAgua" style="display:none;"></button>
+<button id="btnModelos" style="display:none;"></button>
+<button id="uiToggleBtn"
+style="
+position:fixed;
+top:10px;
+left:10px;
+z-index:9999;
+background:#0008;
+color:white;
+border:2px solid white;
+padding:8px 14px;
+border-radius:8px;
+font-size:14px;">
+UI
+</button>
+
 <div id="joystick"><div id="stick"></div></div>
 <div id="cameraPanel"></div>
+<button id="btnPick" style="
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  width:60px;
+  height:60px;
+  border:none;
+  background:none;
+  padding:0;
+  display:none;
+">
+  <img id="btnPickImg" src="models/agarrar.png" style="width:100%;height:100%;object-fit:contain;">
+</button>
+
 <button id="pauseBtn">Pausa</button>
 
 <div id="pausePanel">
@@ -211,7 +330,22 @@ textureLoader.load("models/cielo.jpg", (texture) => {
   scene.background = texture;
   
 });
+// Definir spawnPoint y velocidad como let (no const)
 
+
+
+// Función para resetear al jugador
+function respawnPlayer() {
+  player.position.copy(spawnPoint);   // mover al jugador al spawn
+  playerVelocity.set(0, 0, 0);        // resetear velocidad
+  // si hay gravedad o animaciones, reiniciarlas aquí
+}
+
+
+
+let playerHealth = 100;
+let maxHealth = 100;
+let gameOverActive = false;
 // --- PLAYER ---
 const player = new THREE.Object3D();
 scene.add(player);
@@ -253,14 +387,29 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 // --- TERRAIN BARCO ---
 const loader = new GLTFLoader();
 let terrain = null;
-loader.load("models/Barco.gltf", gltf=>{
-  terrain = gltf.scene;
-  terrain.scale.set(1,1,1); 
-  scene.add(terrain);
+const btnCargar = document.createElement("button");
+btnCargar.textContent = "Cargar Barco";
+btnCargar.style.position = "absolute";
+btnCargar.style.top = "10px";
+btnCargar.style.left = "10px";
+btnCargar.style.display = "none";
+btnCargar.style.zIndex = "9999";
+document.body.appendChild(btnCargar);
 
-  // colocar jugador encima del modelo
-  player.position.set(0,100,0);
-});
+btnCargar.onclick = () => {
+
+  loader.load("models/Barco.gltf", gltf => {
+    terrain = gltf.scene;
+    terrain.scale.set(1,1,1);
+    scene.add(terrain);
+
+    const spawnPoint = new THREE.Vector3(10, 10, 0);
+    player.position.copy(spawnPoint);
+  });
+
+  btnCargar.style.display = "none";
+};
+
 // --- SLIDER PIXEL RATIO ---
 const pixelRatioSlider = document.getElementById('pixelRatioSlider');
 const pixelRatioValue = document.getElementById('pixelRatioValue');
@@ -429,27 +578,36 @@ fogToggle.addEventListener('change', ()=>{ scene.fog = fogToggle.checked ? new T
 
 // --- RAYCASTING Y FÍSICAS ---
 const down = new THREE.Vector3(0,-1,0);
-let velocityY = 0;
-function updatePhysics(delta){
+
+function updatePhysics(delta) {
   if(!terrain) return;
-  // raycasting desde el cubo de colisión
-  raycaster.set(playerCollider.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,5,0)), down);
-  const intersects = raycaster.intersectObject(terrain,true);
-  if(intersects.length>0){
-    const groundY = intersects[0].point.y + 1; // altura sobre el modelo
+
+  const playerPos = playerCollider.getWorldPosition(new THREE.Vector3());
+  raycaster.set(playerPos.clone().add(new THREE.Vector3(0,5,0)), new THREE.Vector3(0,-1,0));
+  const intersects = raycaster.intersectObject(terrain, true);
+
+  if(intersects.length > 0){
+    const groundY = intersects[0].point.y + 1;
+
+    // Gravedad
     if(player.position.y > groundY){
-      velocityY -= 9.8 * delta; // gravedad
+      velocityY -= 9.8 * delta;
       player.position.y += velocityY * delta;
-      if(player.position.y < groundY){
-        player.position.y = groundY;
-        velocityY = 0;
-      }
+      if(player.position.y < groundY) velocityY = 0;
     } else {
       velocityY = 0;
       player.position.y = groundY;
     }
   }
+
+  // Detectar agua
+  if(player.position.y <= waterLevel && !fallingUnderwater){
+    startWaterCinematic();             // iniciar overlay
+    player.position.y = waterLevel - 5; // sumergir jugador bajo el agua
+    velocityY = 0;                     // detener caída
+  }
 }
+
 // --- Detectar colisiones horizontales ---
 function checkWalls(deltaX, deltaZ) {
   if (!terrain) return { dx: deltaX, dz: deltaZ };
@@ -491,92 +649,129 @@ function updatePlayerHeight(){
 }
 // --- AGUA ANIMADA CON TEXTURA ---
 
-const waterGeo = new THREE.PlaneGeometry(500, 500, 100, 100);
-const waterMat = new THREE.MeshPhongMaterial({
-  color: 0x1e90ff,
-  side: THREE.DoubleSide,
-  transparent: true,
-  opacity: 0.8
-});
-const water = new THREE.Mesh(waterGeo, waterMat);
-water.rotation.x = -Math.PI/2;
-water.position.y = -7;
-scene.add(water);
+let water = null; // ← definido afuera
 
-// cargar textura
-textureLoader.load('models/agua.jpg', (texture)=>{
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(10,10);
-  water.material.map = texture;
-  water.material.needsUpdate = true;
-});
+const btnAgua = document.createElement("button");
+btnAgua.textContent = "Cargar Agua";
+btnAgua.style.position = "absolute";
+btnAgua.style.top = "60px";
+btnAgua.style.left = "10px";
+btnAgua.style.display = "none";
+btnAgua.style.zIndex = "9999";
+document.body.appendChild(btnAgua);
+
+btnAgua.onclick = () => {
+
+  const waterGeo = new THREE.PlaneGeometry(900, 900, 100, 100);
+  const waterMat = new THREE.MeshPhongMaterial({
+    color: 0x1e90ff,
+    side: THREE.DoubleSide,
+    transparent: false,
+    opacity: 0.8
+  });
+
+  water = new THREE.Mesh(waterGeo, waterMat); // ← ahora sí existe
+  water.rotation.x = -Math.PI/2;
+  
+  water.position.y = -10;
+  scene.add(water);
+
+  textureLoader.load('models/agua.jpg', (texture)=>{
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(10,10);
+    water.material.map = texture;
+    water.material.needsUpdate = true;
+  });
+
+  btnAgua.style.display = "none";
+};
 
 // --- Parámetros del agua ---
-const waterLevel = 0;        // altura de la superficie del agua
+const waterLevel = -10;        // altura de la superficie del agua
 let inWater = false;         // si el jugador está en el agua
-let swimSpeed = 5;           // velocidad horizontal en el agua
-let buoyancy = 15;           // fuerza de flotación
-let swimUpVelocity = 0;      // velocidad vertical en el agua
-let fallingUnderwater = false;
+let swimSpeed = 0.5;           // velocidad horizontal en el agua
+let buoyancy = -10;           // fuerza de flotación
+let swimUpVelocity = 10;      // velocidad vertical en el agua
+
 let cinematicProgress = 0;
-let gameOver = false;
-const waterBottom = waterLevel - 50; // profundidad del fondo
+
+const waterBottom = waterLevel - 100; // profundidad del fondo
 
 
 
 
 let fadeOverlay;
 
+// --- Definir variables al inicio ---
+const spawnPoint = new THREE.Vector3(0, 10, 0); // punto de inicio
+let playerVelocity = new THREE.Vector3(0, 0, 0);
+let velocityY = 0;
+let fallingUnderwater = false;
+let gameOver = false;
+
+function resetPlayer() {
+  console.log("Reseteando jugador al spawnPoint");
+
+  // Teletransportar jugador y collider
+  player.position.copy(spawnPoint);
+  player.rotation.set(0, 0, 0);
+
+  if (playerCollider) {
+    playerCollider.position.copy(spawnPoint);
+  }
+
+  // Teletransportar cámara
+  camera.position.copy(spawnPoint.clone().add(new THREE.Vector3(0, 2, 0)));
+  camera.rotation.set(0, 0, 0);
+
+  // Reiniciar efectos visuales
+  fallingUnderwater = false;
+  gameOver = false;
+  cinematicProgress = 0;
+
+  const overlay = document.getElementById("waterOverlay");
+  if (overlay) overlay.remove();
+}
+
+// --- Detectar caída al agua ---
+function checkWaterCollision() {
+  const waterLevel = 0; // altura del agua
+  if (player.position.y < waterLevel && !gameOver) {
+    console.log("¡Jugador cayó al agua!");
+    gameOver = true;
+    startWaterCinematic(); // opcional, puedes animar cámara antes de resetear
+  }
+}
+
+// --- Cinemática de agua simplificada ---
 function startWaterCinematic() {
   if (fallingUnderwater) return;
   fallingUnderwater = true;
 
-  fadeOverlay = document.createElement("div");
+  // overlay para efecto visual
+  let fadeOverlay = document.createElement("div");
+  fadeOverlay.id = "waterOverlay";
   fadeOverlay.style.position = "fixed";
   fadeOverlay.style.top = 0;
   fadeOverlay.style.left = 0;
   fadeOverlay.style.width = "100%";
   fadeOverlay.style.height = "100%";
-  fadeOverlay.style.background = "rgba(0,0,0,0)";
-  fadeOverlay.style.transition = "background 3s linear";
+  fadeOverlay.style.background = "rgba(0,0,0,0)"; // inicio transparente
+  fadeOverlay.style.transition = "background 2s linear"; // transición suave
   fadeOverlay.style.pointerEvents = "none";
   document.body.appendChild(fadeOverlay);
 
-  let cinematicStart = performance.now();
-  let descentSpeed = 0.2; // velocidad de descenso
-  let cameraTilt = 0; // ángulo actual hacia arriba
+  // empezar a oscurecer después de 5 segundos
+  setTimeout(() => {
+    fadeOverlay.style.background = "rgba(0,0,0,1)"; // negro total
+  }, 5000);
 
-  function cinematicLoop() {
-    const elapsed = (performance.now() - cinematicStart) / 1000;
-
-    // rotar cámara hacia arriba progresivamente
-    cameraTilt = Math.min(Math.PI / 2.5, cameraTilt + 0.005);
-    camera.rotation.x = -cameraTilt;
-
-    // movimiento descendente
-    player.position.y -= descentSpeed;
-
-    // seguir al jugador
-    camera.position.y = player.position.y + 2;
-
-    // vibración leve tipo agua
-    camera.position.x += Math.sin(elapsed * 4) * 0.01;
-
-    // oscurecer pantalla tras unos segundos
-    if (elapsed > 4) fadeOverlay.style.background = "rgba(0,0,0,1)";
-
-    // reiniciar tras 7s
-    if (elapsed > 7) {
-      location.reload();
-      return;
-    }
-
-    requestAnimationFrame(cinematicLoop);
-  }
-
-  cinematicLoop();
+  // reiniciar jugador después de 7 segundos (opcional)
+  setTimeout(resetPlayer, 7000);
 }
+
+
 
 function updateWaterMovement(delta) {
   if (!terrain) return;
@@ -646,41 +841,40 @@ mira.style.background = '#fff';
 mira.style.pointerEvents = 'none';
 document.body.appendChild(mira);
 
-// Botón táctil
-const btnPick = document.createElement('button');
-btnPick.innerText = 'Agarrar';
-btnPick.style.position = 'fixed'; // <- aquí
-btnPick.style.bottom = '20px';
-btnPick.style.right = '20px';
-btnPick.style.padding = '10px 20px';
-btnPick.style.display = 'none';
-document.body.appendChild(btnPick);
+const btnPick = document.getElementById('btnPick');
+const btnPickImg = document.getElementById('btnPickImg');
+
 btnPick.onclick = () => {
   if (!objetoAgarrado) return;
 
   if (objetoAgarrado.parent === camera) {
-    // Soltar el objeto apuntando con la mira
+    // Cambiar a icono de agarrar
+    btnPickImg.src = "models/agarrar.png";
+
     const w = objetoAgarrado.userData.cfg?.world;
     if (w) {
       objetoAgarrado.scale.set(w.scale, w.scale, w.scale);
       scene.add(objetoAgarrado);
 
-      // Raycast desde la cámara hacia adelante (dirección de la mira)
       raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
       const inter = raycaster.intersectObjects(scene.children, true);
-      if(inter.length > 0){
+
+      if (inter.length > 0) {
         objetoAgarrado.position.copy(inter[0].point);
-        objetoAgarrado.position.y += 0.05; // pequeño offset
+        objetoAgarrado.position.y += 0.05;
       } else {
-        // si no hay colisión, colocarlo a 3 unidades adelante de la cámara
         const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
         objetoAgarrado.position.copy(camera.position).add(forward.multiplyScalar(3));
       }
     }
+
     objetoAgarrado = null;
-    btnPick.style.display = 'none';
+    btnPick.style.display = "none";
+
   } else {
-    // Agarrar el objeto
+    // Cambiar a icono de soltar
+    btnPickImg.src = "models/soltar.png";
+
     colocarEnMano(objetoAgarrado);
   }
 };
@@ -716,24 +910,44 @@ const modelos = [
 let objetosEnEscena = [];
 let objetoAgarrado = null;
 
-// Cargar todos los modelos
-modelos.forEach(m=>{
-  loader.load(m.url, gltf=>{
-    const obj = gltf.scene;
-    obj.userData.cfg = m.cfg || {};
-    scene.add(obj);
+const btnModelos = document.createElement("button");
+btnModelos.textContent = "Cargar Modelos";
+btnModelos.style.position = "absolute";
+btnModelos.style.top = "110px";
+btnModelos.style.display = "none";
+btnModelos.style.left = "10px";
+btnModelos.style.zIndex = "9999";
+document.body.appendChild(btnModelos);
 
-    // colocar en el mundo
-    if(obj.userData.cfg.world){
-      const w = obj.userData.cfg.world;
-      obj.position.set(w.pos.x, w.pos.y, w.pos.z);
-      obj.rotation.set(w.rot.x, w.rot.y, w.rot.z);
-      obj.scale.set(w.scale, w.scale, w.scale);
-    }
+btnModelos.onclick = () => {
 
-    objetosEnEscena.push(obj);
+  modelos.forEach(m=>{
+    loader.load(m.url, gltf=>{
+      const obj = gltf.scene;
+      obj.userData.cfg = m.cfg || {};
+
+      if(obj.userData.cfg.world){
+        const w = obj.userData.cfg.world;
+        obj.position.set(w.pos.x, w.pos.y, w.pos.z);
+        obj.rotation.set(w.rot.x, w.rot.y, w.rot.z);
+        obj.scale.set(w.scale, w.scale, w.scale);
+
+        if (terrain) {
+          terrain.add(obj);
+          obj.position.set(w.pos.x, w.pos.y - terrain.position.y, w.pos.z);
+        } else {
+          scene.add(obj);
+        }
+      } else {
+        scene.add(obj);
+      }
+
+      objetosEnEscena.push(obj);
+    });
   });
-});
+
+  btnModelos.style.display = "none";
+};
 
 // Función para colocar objeto en la mano
 function colocarEnMano(obj){
@@ -746,52 +960,342 @@ function colocarEnMano(obj){
   obj.scale.set(h.scale, h.scale, h.scale);
 }
 
-// Soltar con colisión
+
+// Soltar con colisión y parentizado al terrain
 function soltar(obj){
   if(!obj.userData.cfg || !obj.userData.cfg.world) return;
 
   const w = obj.userData.cfg.world;
   obj.scale.set(w.scale, w.scale, w.scale);
 
-  scene.add(obj);
-  obj.position.copy(camera.position);
-
-  // raycast hacia abajo
   raycaster.set(obj.position, new THREE.Vector3(0,-1,0));
   const inter = raycaster.intersectObjects(scene.children, true);
+
   if(inter.length>0){
-    obj.position.y = inter[0].point.y + 0.05;
+    const point = inter[0].point;
+    obj.position.y = point.y + 0.05;
+
+    if(inter[0].object === terrain || inter[0].object.parent === terrain){
+      terrain.add(obj);
+      obj.position.sub(terrain.position);
+    } else {
+      scene.add(obj);
+    }
+  } else {
+    scene.add(obj);
   }
 }
 
 function revisarObjetoCercano() {
   if (objetoAgarrado && objetoAgarrado.parent === camera) {
-    btnPick.innerText = 'Soltar';
-    btnPick.style.display = 'block';
+    // Icono de soltar
+    btnPickImg.src = "models/soltar.png";
+    btnPick.style.display = "block";
     return;
   }
 
   raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
   const inter = raycaster.intersectObjects(objetosEnEscena, true);
+
   if (inter.length > 0) {
-    // Buscar el objeto padre que tenga userData.cfg
     let obj = inter[0].object;
+
     while (!obj.userData.cfg && obj.parent) obj = obj.parent;
 
     if (!obj.userData.cfg) {
-      btnPick.style.display = 'none';
+      btnPick.style.display = "none";
       objetoAgarrado = null;
       return;
     }
 
     objetoAgarrado = obj;
-    btnPick.innerText = 'Agarrar';
-    btnPick.style.display = 'block';
+
+    // Icono de agarrar
+    btnPickImg.src = "models/agarrar.png";
+
+    btnPick.style.display = "block";
   } else {
-    btnPick.style.display = 'none';
+    btnPick.style.display = "none";
     objetoAgarrado = null;
   }
 }
+
+// --- SHADER UNDERWATER ---
+const UnderwaterShader = {
+  uniforms: {
+    "tDiffuse": { value: null },
+    "time": { value: 0 },
+    "depth": { value: 0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = vec4( position, 1.0 );
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float depth;
+    varying vec2 vUv;
+
+    void main() {
+        vec2 uv = vUv;
+
+        // ondas de distorsión
+        float wave = sin(uv.y * 12.0 + time * 2.0) * 0.015;
+        uv.x += wave;
+        uv.y += sin(uv.x * 8.0 + time * 1.5) * 0.015;
+
+        vec4 color = texture2D(tDiffuse, uv);
+
+        // tinte azul
+        vec3 blueTint = vec3(0.0, 0.25, 0.45);
+
+        // profundidad normalizada
+        float d = clamp(depth * 0.12, 0.0, 1.0);
+
+        // mezcla azul según profundidad
+        color.rgb = mix(color.rgb, blueTint, d * 0.6);
+
+        // contraste reducido
+        color.rgb = mix(color.rgb, vec3(0.5), d * 0.25);
+
+        // oscurecimiento gradual
+        color.rgb *= 1.0 - d * 0.35;
+
+        // --- FOG VOLUMÉTRICO SUBMARINO ---
+        float fogPower = 3.5;   // qué tan densa es la niebla
+        float fogStart = 0.25;  // cuándo empieza a verse
+        float fogAmount = pow(d, fogPower);
+
+        // color de niebla acuática
+        vec3 fogColor = vec3(0.0, 0.20, 0.35);
+
+        // mezcla final fog + escena
+        color.rgb = mix(color.rgb, fogColor, clamp(fogAmount - fogStart, 0.0, 1.0));
+
+        gl_FragColor = color;
+    }
+`
+
+};
+
+import { ShaderPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/ShaderPass.js";
+
+const underwaterPass = new ShaderPass(UnderwaterShader);
+underwaterPass.enabled = false;
+composer.addPass(underwaterPass);
+function updateUnderwater(delta) {
+  // comprobar si el jugador está bajo el nivel del agua
+  inWater = player.position.y <= waterLevel;
+
+  if (inWater && !underwaterPass.enabled) {
+    // activamos el shader al entrar
+    underwaterPass.enabled = true;
+    console.log("Entró al agua: shader activado");
+    startWaterCinematic(); // opcional: overlay y cinemática
+  } else if (!inWater && underwaterPass.enabled) {
+    // desactivamos al salir
+    underwaterPass.enabled = false;
+    console.log("Salió del agua: shader desactivado");
+    
+    // quitar overlay si existe
+    const overlay = document.getElementById("waterOverlay");
+    if (overlay) overlay.remove();
+
+    fallingUnderwater = false; // reset cinematics
+  }
+
+  // actualizar uniform time para animaciones de ondas
+  if (underwaterPass.enabled) {
+    underwaterPass.uniforms.time.value += delta;
+    underwaterPass.uniforms.depth.value = waterLevel - player.position.y; // profundidad relativa
+  }
+}
+// Función para hundir objetos en el agua
+function updateObjectsInWater(delta) {
+  objetosEnEscena.forEach(obj => {
+    if (!obj.userData.cfg || !obj.userData.cfg.world) return;
+
+    // comprobar si el objeto está en el agua
+    const waterLevelGlobal = waterLevel; // altura del agua
+    const objWorldPos = new THREE.Vector3();
+    obj.getWorldPosition(objWorldPos);
+
+    if (objWorldPos.y > waterBottom && objWorldPos.y < waterLevelGlobal) {
+      // hundir lentamente
+      obj.position.y -= 2 * delta; // velocidad de hundimiento
+      if (obj.position.y < waterBottom) obj.position.y = waterBottom;
+    }
+  });
+}
+// Función para colocar un objeto sobre otro y emparentarlo
+function colocarSobreObjeto(obj, target) {
+  if (!obj || !target) return;
+
+  // conservar posición mundial antes de emparentar
+  const worldPos = new THREE.Vector3();
+  const worldQuat = new THREE.Quaternion();
+  const worldScale = new THREE.Vector3();
+  obj.getWorldPosition(worldPos);
+  obj.getWorldQuaternion(worldQuat);
+  obj.getWorldScale(worldScale);
+
+  // agregar como hijo del target
+  target.add(obj);
+
+  // restaurar transformaciones locales para mantener la posición relativa
+  obj.position.copy(worldPos);
+  obj.quaternion.copy(worldQuat);
+  obj.scale.copy(worldScale);
+
+  // ajustar posición relativa al target
+  obj.position.sub(target.getWorldPosition(new THREE.Vector3()));
+}
+
+const btnJugar = document.getElementById("btnJugar");
+const inicioFondo = document.getElementById("inicioFondo");
+const loadingPanel = document.getElementById("loadingPanel");
+const progressCircle = document.getElementById("progressCircle");
+const progressText = document.getElementById("progressText");
+
+const bgContainer = document.getElementById("bgContainer");
+
+const fondoImgs = [
+  "models/barco.jpg",
+  "models/barco1.jpg",
+    "models/barco3.jpg",
+  "models/agua.jpg",
+  "models/barco2.jpg"
+];
+
+function fadeCycle(){
+  const src = fondoImgs[Math.floor(Math.random()*fondoImgs.length)];
+  const img = document.createElement("div");
+  img.style.position = "absolute";
+  img.style.top = "0";
+  img.style.left = "0";
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.backgroundImage = `url(${src})`;
+  img.style.backgroundSize = "cover";
+  img.style.backgroundPosition = "center";
+  img.style.opacity = 0;
+  img.style.transition = "opacity 2s linear";
+  bgContainer.appendChild(img);
+
+  requestAnimationFrame(()=> requestAnimationFrame(()=> img.style.opacity = 1));
+  setTimeout(()=> img.style.opacity = 0, 5000);
+  setTimeout(()=> { if(bgContainer.contains(img)) bgContainer.removeChild(img); }, 7000);
+}
+
+let bgInterval;
+
+function startLoading(totalDuracion = 30000){
+  loadingPanel.style.display = "flex";
+  fadeCycle();
+  bgInterval = setInterval(fadeCycle, 4000);
+
+  const startTime = Date.now();
+  const updateProgress = setInterval(()=>{
+    let elapsed = Date.now() - startTime;
+    let pct = Math.min(100, Math.floor((elapsed/totalDuracion)*100));
+    progressText.textContent = pct + "%";
+    progressCircle.setAttribute("stroke-dashoffset", 439.82*(1-pct/100));
+    if(pct>=100) clearInterval(updateProgress);
+  },50);
+
+  if(btnCargar) btnCargar.click();
+  setTimeout(()=>{ if(btnAgua) btnAgua.click(); }, 10000);
+  setTimeout(()=>{ if(btnModelos) btnModelos.click(); }, 20000);
+
+  setTimeout(()=>{
+    loadingPanel.style.display = "none";
+    clearInterval(bgInterval);
+  }, totalDuracion);
+}
+
+// Click normal en Jugar
+btnJugar.onclick = ()=>{
+  btnJugar.style.display = "none";
+  inicioFondo.style.display = "none"; // quitar fondo de inicio
+  startLoading();
+};
+
+// Touchmove en Jugar para cargar todo inmediatamente
+btnJugar.addEventListener("touchmove", ()=>{
+  btnJugar.style.display = "none";
+  inicioFondo.style.display = "none";
+  startLoading(0);
+});
+function requestFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if (el.msRequestFullscreen) el.msRequestFullscreen();
+}
+
+function checkOrientation() {
+  if(window.innerHeight > window.innerWidth) {
+    window.location.href = "orientación.html";
+  } else {
+    const panel = document.getElementById('panelHorizontal');
+    panel.style.display = 'flex';
+    panel.onclick = () => {
+      panel.style.display = 'none';
+      requestFullscreen();
+    };
+  }
+}
+
+window.addEventListener('load', checkOrientation);
+window.addEventListener('resize', checkOrientation);
+
+
+const uiToggleBtn = document.getElementById("uiToggleBtn");
+
+let uiTransparent = false;
+
+uiToggleBtn.addEventListener("click", () => {
+  uiTransparent = !uiTransparent;
+
+  const opacity = uiTransparent ? "0.005" : "1";
+
+  // Elementos que quieres hacer casi invisibles
+  const uiElements = [
+    document.getElementById("joystick"),
+    document.getElementById("stick"),
+    document.getElementById("cameraPanel"),
+    document.getElementById("btnPick"),
+    document.getElementById("pauseBtn")
+  ];
+
+  uiElements.forEach(el => {
+    if (!el) return;
+
+    el.style.opacity = opacity;
+    el.style.transition = "opacity 0.3s ease";
+  });
+
+  // Cambia color del botón indicador
+  if (uiTransparent) {
+  // Todo el botón casi invisible
+  uiToggleBtn.style.background = "rgba(255,255,255,0.05)"; // fondo 5%
+  uiToggleBtn.style.border = "2px solid rgba(255,255,255,0.05)"; // borde 5%
+  uiToggleBtn.style.color = "rgba(255,255,255,0.05)"; // texto 5%
+} else {
+  // Botón normal visible
+  uiToggleBtn.style.background = "rgba(0,0,0,0.5)";
+  uiToggleBtn.style.border = "2px solid rgba(255,255,255,1)";
+  uiToggleBtn.style.color = "white";
+}
+
+
+});
+
+
 
 
 // --- ANIMACIÓN ---
@@ -862,11 +1366,27 @@ if (terrain) {
   terrain.rotation.x = Math.sin(t * 0.4) * 0.015; // cabeceo
   terrain.position.y = Math.sin(t * 0.5) * 0.5;   // leve subida y bajada
 }
+function checkWaterCollision() {
+  if (player.position.y < waterLevel) { // ajusta según tu altura de agua
+    gameOver = true;
+    startWaterCinematic(); // inicia la cinemática
+  }
+}
 
+// ACTIVAR SHADER BAJO AGUA
+const camY = camera.getWorldPosition(new THREE.Vector3()).y;
 
+if (camY < waterLevel + 2) {
+    underwaterPass.enabled = true;
+    underwaterPass.uniforms.time.value = performance.now() * 0.001;
+    underwaterPass.uniforms.depth.value = (waterLevel - camY);
+} else {
+    underwaterPass.enabled = false;
+}
 
+checkWaterCollision();
   revisarObjetoCercano();
-
+updateObjectsInWater(delta);
 composer.render();
 
 }

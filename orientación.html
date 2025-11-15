@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rota tu dispositivo</title>
+
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", sans-serif;
+    background: #000;
+  }
+
+  #verticalPanel {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #00a6ff, #00d7ff);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999;
+    color: white;
+    padding: 20px;
+    text-align: center;
+    transition: opacity 1s ease, background 1s ease;
+    overflow: hidden;
+  }
+
+  #mensaje {
+    font-size: 2rem;
+    font-weight: bold;
+    animation: aparecer 1.2s ease forwards;
+    opacity: 0;
+    z-index: 10;
+  }
+
+  #celular {
+    width: 140px;
+    margin-top: 30px;
+    animation: rotarTelefono 2.5s infinite ease-in-out;
+    transition: transform 1.5s ease, opacity 1.2s ease;
+    z-index: 10;
+  }
+
+  /* Flotación suave */
+  @keyframes flotar {
+    0%   { transform: translateY(0) rotate(-2deg); }
+    50%  { transform: translateY(-10px) rotate(2deg); }
+    100% { transform: translateY(0) rotate(-2deg); }
+  }
+
+  /* Texto */
+  @keyframes aparecer {
+    0%   { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Rotación del celular */
+  @keyframes rotarTelefono {
+    0%   { transform: rotate(0deg); }
+    40%  { transform: rotate(90deg); }
+    70%  { transform: rotate(90deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+</style>
+</head>
+<body>
+
+<div id="verticalPanel">
+  
+  <!-- Contenedor para barquitos infinitos -->
+  <div id="barcosContainer" style="position:absolute; inset:0; overflow:hidden; z-index:1;"></div>
+
+  <div id="mensaje">Rota tu dispositivo a horizontal</div>
+  <img id="celular" src="models/celular.png" alt="celular">
+</div>
+
+<script>
+const panel = document.getElementById("verticalPanel");
+const barcosContainer = document.getElementById("barcosContainer");
+const celular = document.getElementById("celular");
+let procesoIniciado = false;
+
+function crearBarco() {
+  const barco = document.createElement("img");
+  barco.src = "models/barco_de_papel.png";
+  barco.style.position = "absolute";
+  barco.style.bottom = (5 + Math.random() * 25) + "%";   // altura aleatoria
+  barco.style.left = "-20%";
+  
+  const size = 80 + Math.random() * 80;
+  barco.style.width = size + "px";
+
+  barco.style.opacity = 0.85;
+  barco.style.animation = `
+      flotar ${2 + Math.random() * 3}s infinite ease-in-out`;
+  
+  // Velocidad aleatoria
+  const duracion = 10 + Math.random() * 10;
+
+  barco.style.transition = `left ${duracion}s linear`;
+  barcosContainer.appendChild(barco);
+
+  // Forzamos movimiento
+  setTimeout(() => {
+    barco.style.left = "120%";
+  }, 100);
+
+  // Cuando termine, eliminar y crear otro
+  setTimeout(() => {
+    barco.remove();
+    crearBarco();
+  }, duracion * 1000 + 500);
+}
+
+// Crear varios barcos al inicio
+for (let i = 0; i < 5; i++) {
+  setTimeout(() => crearBarco(), i * 800);
+}
+
+function detectarOrientation() {
+  const horizontal = window.innerWidth > window.innerHeight;
+
+  if (horizontal && !procesoIniciado) {
+    procesoIniciado = true;
+
+    // Esperar 3 segundos
+    setTimeout(() => {
+
+      celular.style.transform = "scale(2.5) rotate(0deg)";
+      celular.style.opacity = "0";
+
+      panel.style.background = "rgba(0,0,0,1)";
+      panel.style.opacity = "0";
+
+      setTimeout(() => {
+        window.location.href = "index.html";
+      }, 1200);
+
+    }, 3000);
+  }
+}
+
+window.addEventListener("load", detectarOrientation);
+window.addEventListener("resize", detectarOrientation);
+</script>
+
+</body>
+</html>
