@@ -300,6 +300,9 @@ UI
     </div>
   </div>
 </div>
+<audio id="ambientSound" src="models/ambiental.mp3" preload="auto"></audio>
+<audio id="stepSound" src="models/pasos.mp3" preload="auto"></audio>
+<audio id="underwaterSound" src="models/bajo_agua.mp3" preload="auto"></audio>
 
 
 <script type="module">
@@ -310,6 +313,75 @@ import { RenderPass } from "https://esm.sh/three@0.162.0/examples/jsm/postproces
 import { UnrealBloomPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { FilmPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/FilmPass.js";
 import { BokehPass } from "https://esm.sh/three@0.162.0/examples/jsm/postprocessing/BokehPass.js";
+// --- AUDIO AMBIENTAL ---
+const ambientSound = document.getElementById("ambientSound");
+ambientSound.volume = 0.01;     // volumen inicial ultra bajo
+ambientSound.loop = false;      // manual loop (por seguridad en móviles)
+
+// Reiniciar manualmente cuando termine
+ambientSound.addEventListener("ended", () => {
+    ambientSound.currentTime = 0;
+    ambientSound.play();
+});
+
+// Función para subir el volumen poco a poco
+function fadeInAmbient(duration = 5000) {
+    let start = ambientSound.volume;
+    let end = 0.35;   // volumen final
+    let step = (end - start) / (duration / 50);
+
+    let interval = setInterval(() => {
+        ambientSound.volume += step;
+        if (ambientSound.volume >= end) {
+            ambientSound.volume = end;
+            clearInterval(interval);
+        }
+    }, 50);
+}
+// --- SONIDO DE PASOS ---
+const stepSound = document.getElementById("stepSound");
+stepSound.volume = 0.35;     // volumen normal
+stepSound.loop = false;      // loopeo manual
+
+
+
+// Reiniciar sonido automáticamente
+stepSound.addEventListener("ended", () => {
+    stepSound.currentTime = 0;
+    stepSound.play().catch(()=>{});
+});
+// --- SONIDO AMBIENTAL ---
+
+ambientSound.volume = 0.01;
+ambientSound.loop = false;
+
+// --- SONIDO BAJO AGUA ---
+const underwaterSound = document.getElementById("underwaterSound");
+underwaterSound.volume = 0.4;
+underwaterSound.loop = false;
+underwaterSound.volume = 0.4;
+underwaterSound.currentTime = 0;
+underwaterSound.play().catch(()=>{});
+
+// loop manual para ambos
+ambientSound.addEventListener("ended", ()=>{ ambientSound.currentTime = 0; ambientSound.play().catch(()=>{}); });
+underwaterSound.addEventListener("ended", ()=>{ underwaterSound.currentTime = 0; underwaterSound.play().catch(()=>{}); });
+underwaterSound.volume = 0.4;
+underwaterSound.currentTime = 0;
+underwaterSound.play().catch(()=>{});
+
+// --- SONIDO DE PASOS ---
+
+stepSound.volume = 0.35;
+stepSound.loop = false;
+
+stepSound.addEventListener("ended", ()=>{
+    stepSound.currentTime = 0;
+    stepSound.play().catch(()=>{});
+});
+
+let pasosActivos = false;
+
 
 // --- ESCENA ---
 const scene = new THREE.Scene();
@@ -689,7 +761,8 @@ btnAgua.onclick = () => {
 
 // --- Parámetros del agua ---
 const waterLevel = -10;        // altura de la superficie del agua
-let inWater = false;         // si el jugador está en el agua
+let inWater = false;  
+let usandoAmbientalNormal = true; // si el jugador está en el agua
 let swimSpeed = 0.5;           // velocidad horizontal en el agua
 let buoyancy = -10;           // fuerza de flotación
 let swimUpVelocity = 10;      // velocidad vertical en el agua
@@ -735,14 +808,7 @@ function resetPlayer() {
 }
 
 // --- Detectar caída al agua ---
-function checkWaterCollision() {
-  const waterLevel = 0; // altura del agua
-  if (player.position.y < waterLevel && !gameOver) {
-    console.log("¡Jugador cayó al agua!");
-    gameOver = true;
-    startWaterCinematic(); // opcional, puedes animar cámara antes de resetear
-  }
-}
+
 
 // --- Cinemática de agua simplificada ---
 function startWaterCinematic() {
@@ -798,12 +864,11 @@ function updateWaterMovement(delta) {
     if (playerPos.y > waterLevel) {
       velocityY -= 9.8 * delta;
       player.position.y += velocityY * delta;
-      if (player.position.y <= waterLevel) {
-        player.position.y = waterLevel;
-        inWater = true;
-        swimUpVelocity = 0;
-        velocityY = 0;
-      }
+      if (playerPos.y <= waterLevel) {
+    inWater = true;       // entrar al agua normalmente
+    velocityY = 0;
+}
+
     } else {
       inWater = true; // jugador ya en agua
     }
@@ -1088,32 +1153,79 @@ const underwaterPass = new ShaderPass(UnderwaterShader);
 underwaterPass.enabled = false;
 composer.addPass(underwaterPass);
 function updateUnderwater(delta) {
-  // comprobar si el jugador está bajo el nivel del agua
-  inWater = player.position.y <= waterLevel;
 
-  if (inWater && !underwaterPass.enabled) {
-    // activamos el shader al entrar
-    underwaterPass.enabled = true;
-    console.log("Entró al agua: shader activado");
-    startWaterCinematic(); // opcional: overlay y cinemática
-  } else if (!inWater && underwaterPass.enabled) {
-    // desactivamos al salir
-    underwaterPass.enabled = false;
-    console.log("Salió del agua: shader desactivado");
-    
-    // quitar overlay si existe
-    const overlay = document.getElementById("waterOverlay");
-    if (overlay) overlay.remove();
+    // 1️⃣ DETECTAR SI EL JUGADOR ESTÁ BAJO EL AGUA
+    // ------------------------------------------------
+    inWater = player.position.y <= waterLevel;
 
-    fallingUnderwater = false; // reset cinematics
-  }
 
-  // actualizar uniform time para animaciones de ondas
-  if (underwaterPass.enabled) {
-    underwaterPass.uniforms.time.value += delta;
-    underwaterPass.uniforms.depth.value = waterLevel - player.position.y; // profundidad relativa
-  }
+    // 2️⃣ CAMBIO DE SONIDO SEGÚN ESTADO "inWater"
+    // ------------------------------------------------
+
+    // Entró bajo el agua → activar sonido bajo agua
+    if (inWater && usandoAmbientalNormal) {
+
+        // Pausar sonido ambiental
+        if (!ambientSound.paused) {
+            ambientSound.pause();
+        }
+
+        // Activar sonido bajo el agua
+        underwaterSound.currentTime = 0;
+        underwaterSound.play().catch(() => {});
+
+        usandoAmbientalNormal = false;
+        console.log("🔊 Sonido BAJO AGUA activado");
+    }
+
+    // Salió del agua → volver al sonido normal
+    if (!inWater && !usandoAmbientalNormal) {
+
+        underwaterSound.pause();
+
+        ambientSound.currentTime = 0;
+        ambientSound.play().catch(() => {});
+
+        usandoAmbientalNormal = true;
+        console.log("🔊 Sonido AMBIENTAL activado");
+    }
+
+
+    // 3️⃣ ACTIVACIÓN / DESACTIVACIÓN DEL SHADER VISUAL
+    // ------------------------------------------------
+
+    // Entró al agua → activar efecto visual
+    if (inWater && !underwaterPass.enabled) {
+
+        underwaterPass.enabled = true;
+        console.log("🌊 Shader de agua ACTIVADO");
+
+        // Solo si tienes cinemática
+        startWaterCinematic();
+    }
+
+    // Salió del agua → desactivar efecto visual
+    else if (!inWater && underwaterPass.enabled) {
+
+        underwaterPass.enabled = false;
+        console.log("🌊 Shader de agua DESACTIVADO");
+
+        // quitar overlay si existe
+        const overlay = document.getElementById("waterOverlay");
+        if (overlay) overlay.remove();
+
+        fallingUnderwater = false;
+    }
+
+
+    // 4️⃣ ANIMACIÓN DE AGUA
+    // ------------------------------------------------
+    if (underwaterPass.enabled) {
+        underwaterPass.uniforms.time.value += delta;
+        underwaterPass.uniforms.depth.value = waterLevel - player.position.y;
+    }
 }
+
 // Función para hundir objetos en el agua
 function updateObjectsInWater(delta) {
   objetosEnEscena.forEach(obj => {
@@ -1214,7 +1326,15 @@ function startLoading(totalDuracion = 30000){
   setTimeout(()=>{
     loadingPanel.style.display = "none";
     clearInterval(bgInterval);
-  }, totalDuracion);
+
+    // subir volumen lentamente
+    fadeInAmbient(3000);  
+    // permitir que el sonido de pasos pueda reproducirse después de la carga
+    
+pasosActivos = true;
+// 6 segundos
+}, totalDuracion);
+
 }
 
 // Click normal en Jugar
@@ -1244,9 +1364,14 @@ function checkOrientation() {
     const panel = document.getElementById('panelHorizontal');
     panel.style.display = 'flex';
     panel.onclick = () => {
-      panel.style.display = 'none';
-      requestFullscreen();
-    };
+    panel.style.display = 'none';
+    requestFullscreen();
+
+    // iniciar audio
+    ambientSound.currentTime = 0;
+    ambientSound.play().catch(()=>{});
+};
+
   }
 }
 
@@ -1335,6 +1460,44 @@ if (!paused) {
   // movimiento horizontal normal
   const forward = -joystickInput.y * speed * delta;
   const right = joystickInput.x * speed * delta;
+  // --- REPRODUCIR SONIDO DE PASOS SOLO CUANDO SE MUEVE ---
+// --- REPRODUCCIÓN DE PASOS ---
+if (pasosActivos) {
+
+    const moviendo = (Math.abs(joystickInput.x) > 0.1 || Math.abs(joystickInput.y) > 0.1);
+
+    const playerIsInWater = (player.position.y <= waterLevel);
+    const playerIsFalling = velocityY < -0.1; // caída
+    const playerNotOnFloor = !playerIsFalling && !inWater && velocityY !== 0;
+
+    // CONDICIONES DONDE NO HAY PASOS
+    if (playerIsInWater || playerIsFalling || playerNotOnFloor) {
+    if (!stepSound.paused) {
+        stepSound.pause();
+        stepSound.currentTime = 0;
+    }
+    // NO usar return, dejar que la física siga
+} else {
+    // aquí va tu reproducción normal de pasos
+}
+
+
+    // SI SE MUEVE Y ESTÁ EN EL SUELO → SUENA
+    if (moviendo) {
+        if (stepSound.paused) {
+            stepSound.currentTime = 0;
+            stepSound.play().catch(()=>{});
+        }
+    } 
+    else {
+        if (!stepSound.paused) {
+            stepSound.pause();
+            stepSound.currentTime = 0;
+        }
+    }
+}
+
+
   let {dx,dz} = checkWalls(
     Math.sin(yaw)*forward + Math.cos(yaw)*right,
     Math.cos(yaw)*forward - Math.sin(yaw)*right
@@ -1383,7 +1546,7 @@ if (camY < waterLevel + 2) {
 } else {
     underwaterPass.enabled = false;
 }
-
+updateUnderwater(delta)
 checkWaterCollision();
   revisarObjetoCercano();
 updateObjectsInWater(delta);
