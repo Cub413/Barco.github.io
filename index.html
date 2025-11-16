@@ -734,12 +734,12 @@ document.body.appendChild(btnAgua);
 
 btnAgua.onclick = () => {
 
-  const waterGeo = new THREE.PlaneGeometry(900, 900, 100, 100);
+  const waterGeo = new THREE.PlaneGeometry(3500, 3500, 100, 100);
   const waterMat = new THREE.MeshPhongMaterial({
     color: 0x1e90ff,
     side: THREE.DoubleSide,
     transparent: false,
-    opacity: 0.8
+    opacity: 0.10
   });
 
   water = new THREE.Mesh(waterGeo, waterMat); // ← ahora sí existe
@@ -910,38 +910,59 @@ const btnPick = document.getElementById('btnPick');
 const btnPickImg = document.getElementById('btnPickImg');
 
 btnPick.onclick = () => {
-  if (!objetoAgarrado) return;
+    if (!objetoAgarrado) return;
 
-  if (objetoAgarrado.parent === camera) {
-    // Cambiar a icono de agarrar
-    btnPickImg.src = "models/agarrar.png";
+    // --- SI EL OBJETO YA ESTÁ EN LA MANO → SOLTAR ---
+    if (objetoAgarrado.parent === camera) {
 
-    const w = objetoAgarrado.userData.cfg?.world;
-    if (w) {
-      objetoAgarrado.scale.set(w.scale, w.scale, w.scale);
-      scene.add(objetoAgarrado);
+        btnPickImg.src = "models/agarrar.png";
 
-      raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-      const inter = raycaster.intersectObjects(scene.children, true);
+        const w = objetoAgarrado.userData.cfg?.world;
 
-      if (inter.length > 0) {
-        objetoAgarrado.position.copy(inter[0].point);
-        objetoAgarrado.position.y += 0.05;
-      } else {
-        const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-        objetoAgarrado.position.copy(camera.position).add(forward.multiplyScalar(3));
-      }
+        camera.remove(objetoAgarrado);
+        scene.add(objetoAgarrado);
+
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const inter = raycaster.intersectObjects(scene.children, true);
+
+        let destino = new THREE.Vector3();
+
+        if (inter.length > 0) {
+            destino.copy(inter[0].point);
+            destino.y += 0.05;
+        } else {
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            destino.copy(camera.position).add(forward.multiplyScalar(2));
+        }
+
+        const destinoQuat = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(w.rot.x, w.rot.y, w.rot.z)
+        );
+        const destinoScale = new THREE.Vector3(w.scale, w.scale, w.scale);
+
+        interpolarTransform(objetoAgarrado, destino, destinoQuat, destinoScale, 0.25);
+
+        objetoAgarrado = null;
+        btnPick.style.display = "none";
+        return;
     }
 
-    objetoAgarrado = null;
-    btnPick.style.display = "none";
-
-  } else {
-    // Cambiar a icono de soltar
+    // --- SI EL OBJETO ESTÁ EN EL SUELO → AGARRAR ---
     btnPickImg.src = "models/soltar.png";
+    btnPick.style.display = "block";   // 🔥 MOSTRAR EL BOTÓN INMEDIATO
 
-    colocarEnMano(objetoAgarrado);
-  }
+    const obj = objetoAgarrado;        // referencia por seguridad
+
+    // 🔥 MARCAR DESDE YA QUE ESTÁ EN LA MANO (antes de animación)
+    objetoAgarrado = obj;
+    obj.estaEnMano = true;
+
+    colocarEnMano(obj);
+
+    // Al terminar animación: asegurar parent final
+    setTimeout(() => {
+        obj.estaEnMano = false;
+    }, 250);
 };
 
 // Modelos con rutas y posiciones
@@ -1013,52 +1034,178 @@ btnModelos.onclick = () => {
 
   btnModelos.style.display = "none";
 };
+function interpolarTransform(obj, destinoPos, destinoQuat, destinoScale, duracion = 0.25) {
+    // 🔥 Asegurar matrices actualizadas
+    camera.updateMatrixWorld(true);
+    obj.updateMatrixWorld(true);
 
-// Función para colocar objeto en la mano
-function colocarEnMano(obj){
-  if(!obj.userData.cfg || !obj.userData.cfg.hand) return;
+    // 1️⃣ Obtener inicio REAL en coordenadas WORLD
+    const inicioPos = new THREE.Vector3();
+    const inicioQuat = new THREE.Quaternion();
+    const inicioScale = new THREE.Vector3();
 
-  const h = obj.userData.cfg.hand;
-  camera.add(obj);
-  obj.position.set(h.pos.x, h.pos.y, h.pos.z);
-  obj.rotation.set(h.rot.x, h.rot.y, h.rot.z);
-  obj.scale.set(h.scale, h.scale, h.scale);
+    obj.getWorldPosition(inicioPos);
+    obj.getWorldQuaternion(inicioQuat);
+    obj.getWorldScale(inicioScale);
+
+    // 2️⃣ Pasar el objeto a la escena raíz SIN perder la pose mundial
+    if (obj.parent !== scene) {
+        obj.parent.remove(obj);
+        scene.add(obj);
+
+        obj.position.copy(inicioPos);
+        obj.quaternion.copy(inicioQuat);
+        obj.scale.copy(inicioScale);
+    }
+
+    // 3️⃣ Animación usando WORLD space
+    const t0 = performance.now();
+    const durMs = duracion * 1000;
+
+    const pos = new THREE.Vector3();
+    const sca = new THREE.Vector3();
+    const rot = new THREE.Quaternion();
+
+    function animar() {
+        const elapsed = performance.now() - t0;
+        const k = Math.min(elapsed / durMs, 1);
+
+        // posición
+        pos.copy(inicioPos).lerp(destinoPos, k);
+        obj.position.copy(pos);
+
+        // rotación
+        rot.copy(inicioQuat).slerp(destinoQuat, k);
+        obj.quaternion.copy(rot);
+
+        // escala
+        sca.copy(inicioScale).lerp(destinoScale, k);
+        obj.scale.copy(sca);
+
+        if (k < 1) {
+            requestAnimationFrame(animar);
+        }
+    }
+
+    animar();
 }
 
+// Función para colocar objeto en la mano
+function colocarEnMano(obj) {
+    const h = obj.userData.cfg.hand;
 
-// Soltar con colisión y parentizado al terrain
-function soltar(obj){
-  if(!obj.userData.cfg || !obj.userData.cfg.world) return;
+    // posición destino en espacio local de la cámara
+    const destino = new THREE.Vector3(h.pos.x, h.pos.y, h.pos.z);
+    const destinoQuat = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(h.rot.x, h.rot.y, h.rot.z)
+    );
+    const destinoScale = new THREE.Vector3(h.scale, h.scale, h.scale);
 
-  const w = obj.userData.cfg.world;
-  obj.scale.set(w.scale, w.scale, w.scale);
+    // convertimos destino a coordenadas MUNDIALES
+    const destinoWorld = destino.clone().applyMatrix4(camera.matrixWorld);
+    const destinoWorldQuat = destinoQuat.clone().premultiply(camera.quaternion);
 
-  raycaster.set(obj.position, new THREE.Vector3(0,-1,0));
-  const inter = raycaster.intersectObjects(scene.children, true);
-
-  if(inter.length>0){
-    const point = inter[0].point;
-    obj.position.y = point.y + 0.05;
-
-    if(inter[0].object === terrain || inter[0].object.parent === terrain){
-      terrain.add(obj);
-      obj.position.sub(terrain.position);
-    } else {
-      scene.add(obj);
-    }
-  } else {
+    // agregar a la escena temporalmente para interpolar en WORLD
     scene.add(obj);
-  }
+
+    interpolarTransform(obj, destinoWorld, destinoWorldQuat, destinoScale, 0.2);
+
+    // cuando termine la animación, meterlo en la cámara SIN romper la posición final
+    setTimeout(() => {
+        camera.add(obj);
+
+        // fijamos la posición relativa exacta
+        obj.position.copy(destino);
+        obj.quaternion.copy(destinoQuat);
+        obj.scale.copy(destinoScale);
+    }, 220);
+}
+
+function soltarConAnimacion(obj) {
+    const w = obj.userData.cfg.world;
+    const h = obj.userData.cfg.hand;
+
+    // 1️⃣ Calcular la posición REAL en el mundo del objeto en la mano
+    const startPos = new THREE.Vector3(h.pos.x, h.pos.y, h.pos.z);
+
+    // convertir posición local de la mano → a WORLD
+    startPos.applyMatrix4(camera.matrixWorld);
+
+    // calcular rotación WORLD real del objeto en la mano
+    const startQuat = new THREE.Quaternion()
+        .setFromEuler(new THREE.Euler(h.rot.x, h.rot.y, h.rot.z))
+        .premultiply(camera.quaternion);
+
+    // escala inicial (la de la mano)
+    const startScale = new THREE.Vector3(h.scale, h.scale, h.scale);
+
+    // 2️⃣ Mover el objeto a la escena sin perder su pose de mano
+    camera.remove(obj);
+    scene.add(obj);
+
+    obj.position.copy(startPos);
+    obj.quaternion.copy(startQuat);
+    obj.scale.copy(startScale);
+
+    // 3️⃣ Calcular destino en el mundo
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const inter = raycaster.intersectObjects(scene.children, true);
+
+    let endPos = new THREE.Vector3();
+    if (inter.length > 0) {
+        endPos.copy(inter[0].point);
+        endPos.y += 0.05;
+    } else {
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        endPos.copy(camera.position).add(forward.multiplyScalar(2));
+    }
+
+    // Rotación final deseada
+    const endQuat = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(w.rot.x, w.rot.y, w.rot.z)
+    );
+
+    const endScale = new THREE.Vector3(w.scale, w.scale, w.scale);
+
+    // 4️⃣ Punto de control para el arco (curva hacia arriba)
+    const controlPoint = startPos.clone().lerp(endPos, 0.5);
+    controlPoint.y += 1.5;  // altura del arco 🔥
+
+    // 5️⃣ Animación: trayectoria parabólica hacia abajo
+    const t0 = performance.now();
+    const dur = 0.35;
+
+    function animar() {
+        const t = (performance.now() - t0) / (dur * 1000);
+        const k = Math.min(t, 1);
+
+        // 🎯 Interpolación cuadrática tipo Bézier (arco)
+        const a = startPos.clone().multiplyScalar((1 - k) * (1 - k));
+        const b = controlPoint.clone().multiplyScalar(2 * (1 - k) * k);
+        const c = endPos.clone().multiplyScalar(k * k);
+
+        const pos = a.add(b).add(c);
+        obj.position.copy(pos);
+
+        // rotación gradual
+        obj.quaternion.slerpQuaternions(startQuat, endQuat, k);
+
+        // escala gradual
+        obj.scale.lerpVectors(startScale, endScale, k);
+
+        if (k < 1) requestAnimationFrame(animar);
+    }
+
+    animar();
 }
 
 function revisarObjetoCercano() {
-  if (objetoAgarrado && objetoAgarrado.parent === camera) {
-    // Icono de soltar
-    btnPickImg.src = "models/soltar.png";
-    btnPick.style.display = "block";
-    return;
-  }
-
+// 🔥 Si un objeto está siendo agarrado (animando o ya en mano)
+    if (objetoAgarrado && (objetoAgarrado.parent === camera || objetoAgarrado.estaEnMano)) {
+        btnPickImg.src = "models/soltar.png";
+        btnPick.style.display = "block";
+        return;
+    }
   raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
   const inter = raycaster.intersectObjects(objetosEnEscena, true);
 
